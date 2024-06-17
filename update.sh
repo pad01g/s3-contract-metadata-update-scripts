@@ -1,5 +1,9 @@
 #!/bin/bash
 
+if [[ "$#" != "4" ]]; then
+    echo "$0 [bucketName] [remoteSrcDir] [remoteDestDir] [controllDir]";
+fi
+
 bucketName=$1
 remoteSrcDir=$2
 remoteDestDir=$3
@@ -11,18 +15,20 @@ localSrcDir=src
 localDestDir=dest
 
 main(){
+    mkdir -p $localDestDir
 
     # check if remote dest dir exists (if exists, previous operation failed)
 
-    remoteDestDirCount=$(aws s3 ls ${bucketName}/${remoteDestDir} | awk "{print \$4}" | wc -l)
+    remoteDestDirCount=$(aws s3 ls ${bucketName}/${remoteDestDir}/ | awk "{print \$4}" | wc -l)
     # list file might not exist
     aws s3 cp s3://$bucketName/${controllDir}/${listFileNameA} ./${listFileNameA}
+    touch ./${listFileNameA}
     listFileCount=$(cat ./${listFileNameA} | wc -l)
 
     if [[ "$remoteDestDirCount" == "0" && "$listFileCount" == "0" ]]; then
         # no failed jobs.
         upload
-    elif [[ "$remoteDestDirCount" != "$listFileCount" ]]
+    elif [[ "$remoteDestDirCount" != "$listFileCount" ]]; then
         # upload has failed, start over again.
         upload
     else
@@ -36,18 +42,18 @@ main(){
 
     # list all files again
 
-    aws s3 ls ${bucketName}/${remoteSrcDir}  | awk "{print \$4}" | sort | uniq > ./${listFileNameB}
+    aws s3 ls ${bucketName}/${remoteSrcDir}/  | awk "{print \$4}" | sort | uniq > ./${listFileNameB}
 
     # check diff A and B
 
-    listFileNameTemp=$(mktmp)
+    listFileNameTemp=$(mktemp)
 
     diff <(cat ./${listFileNameA}) <(cat ./${listFileNameB}) | grep -E '^(<|>) ' | cut -c3- > $listFileNameTemp
 
     if [[ $(cat $listFileNameTemp | wc -l ) == "0" ]]; then
         # if there is no difference, remove remote/local file and finish.
         aws s3 rm s3://$bucketName/${controllDir}/${listFileNameA}
-        rm ./${listFileNameA} ./${listFileNameB} ${listFileNameTemp}
+        rm -rf ./${listFileNameA} ./${listFileNameB} ${listFileNameTemp} ${localSrcDir} ${localDestDir}
         return
     else
         # if there is difference, check difference 
@@ -59,7 +65,7 @@ main(){
 upload(){
     # list all files
 
-    aws s3 ls ${bucketName}/${remoteSrcDir} | awk "{print \$4}" | sort | uniq > ./${listFileNameA}
+    aws s3 ls ${bucketName}/${remoteSrcDir}/ | awk "{print \$4}" | sort | uniq > ./${listFileNameA}
 
     # upload listed file, later check if all files uploaded to ${remoteDestDir}
     aws s3 cp ./${listFileNameA} s3://$bucketName/${controllDir}/${listFileNameA}
@@ -100,7 +106,7 @@ uploadLoop(){
 
     if [[ $(cat ${listFileNameTemp} | wc -l) == "0" ]]; then
         # list diff is empty, quit
-        rm ./${listFileNameA} ./${listFileNameB} ${listFileNameTemp}
+        rm -rf ./${listFileNameA} ./${listFileNameB} ${listFileNameTemp} ${localSrcDir} ${localDestDir}
         return
     fi
 
@@ -126,7 +132,7 @@ uploadLoop(){
     aws s3 cp ./${listFileNameA} s3://$bucketName/${controllDir}/${listFileNameA}
 
     # list all files again
-    aws s3 ls ${bucketName}/${remoteSrcDir}  | awk "{print \$4}" | sort | uniq > ./${listFileNameB}
+    aws s3 ls ${bucketName}/${remoteSrcDir}/  | awk "{print \$4}" | sort | uniq > ./${listFileNameB}
 
 
     # check diff of A and B
@@ -135,3 +141,5 @@ uploadLoop(){
     # run loop again
     uploadLoop ${listFileNameTemp}
 }
+
+main

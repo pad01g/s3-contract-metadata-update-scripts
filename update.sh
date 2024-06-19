@@ -15,7 +15,7 @@ localSrcDir=src
 localDestDir=dest
 
 main(){
-    mkdir -p $localDestDir
+    mkdir -p $localDestDir $localSrcDir
 
     # check if remote dest dir exists (if exists, previous operation failed)
 
@@ -106,6 +106,7 @@ uploadLoop(){
 
     if [[ $(cat ${listFileNameTemp} | wc -l) == "0" ]]; then
         # list diff is empty, quit
+        aws s3 rm s3://$bucketName/${controllDir}/${listFileNameA}
         rm -rf ./${listFileNameA} ./${listFileNameB} ${listFileNameTemp} ${localSrcDir} ${localDestDir}
         return
     fi
@@ -115,13 +116,15 @@ uploadLoop(){
         aws s3 cp s3://${bucketName}/${remoteSrcDir}/$f ./${localSrcDir}/$f
     done
 
-    rm ${listFileNameTemp}
-
     # process downloaded files
     processFiles
 
-    # upload files
-    aws s3 cp ./${localDestDir} s3://${bucketName}/${remoteDestDir} --recursive
+    # for each new files, upload.
+    cat ${listFileNameTemp} | while read f; do
+        aws s3 cp ./${localDestDir}/${f} s3://${bucketName}/${remoteDestDir}/${f}
+    done
+
+    rm ${listFileNameTemp}
 
     completeUpload
 

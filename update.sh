@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -e  # Exit on any error
+set -euo pipefail  # エラー・未定義変数・パイプライン失敗で即終了
 
 # Logging functions
 log_info() {
